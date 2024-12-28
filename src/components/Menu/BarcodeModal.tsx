@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Modal, InputNumber } from 'antd';
-import { Printer, QrCode, Copy, Check } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 import type { MenuItem } from '../../types';
 
@@ -13,13 +13,11 @@ interface BarcodeModalProps {
 const BarcodeModal: React.FC<BarcodeModalProps> = ({ isOpen, onClose, item }) => {
   const barcodeRef = useRef<SVGSVGElement>(null);
   const [copies, setCopies] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [copied, setCopied] = useState(false);
 
+  // Generate barcode when modal opens
   useEffect(() => {
     if (isOpen && item.barcode && barcodeRef.current) {
       try {
-        setIsGenerating(true);
         JsBarcode(barcodeRef.current, item.barcode, {
           format: 'CODE128',
           width: 2,
@@ -28,55 +26,108 @@ const BarcodeModal: React.FC<BarcodeModalProps> = ({ isOpen, onClose, item }) =>
           fontSize: 16,
           margin: 10,
           background: '#ffffff',
-          textAlign: 'center',
-          textPosition: 'bottom',
-          textMargin: 8,
         });
       } catch (error) {
         console.error('Error generating barcode:', error);
-      } finally {
-        setIsGenerating(false);
       }
     }
   }, [isOpen, item.barcode]);
 
-  // ... rest of the code remains the same ...
+  const handlePrint = () => {
+    if (!barcodeRef.current) return;
+  
+    // Clone the SVG to ensure it renders in the new window
+    const barcodeClone = barcodeRef.current.cloneNode(true) as SVGSVGElement;
+  
+    // Generate copies
+    const barcodeElements = Array(copies)
+      .fill(0)
+      .map(() => `
+        <div style="
+          padding: 20px;
+          text-align: center;
+          border: 1px solid #eee;
+          border-radius: 8px;
+          background-color: #f9f9f9;
+        ">
+          <h2 style="margin-bottom: 10px; font-size: 18px;">${item.name}</h2>
+          ${barcodeClone.outerHTML}
+        </div>
+      `)
+      .join('');
+  
+    // Create print window
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow pop-ups to print barcodes');
+      return;
+    }
+  
+    // Write print document
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Print Barcodes - ${item.name}</title>
+          <style>
+            @page { 
+              size: auto;
+              margin: 15mm;
+            }
+            body { 
+              font-family: system-ui, -apple-system, sans-serif;
+              margin: 0;
+              padding: 20px;
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 20px;
+            }
+            svg {
+              max-width: 100%;
+              height: auto;
+            }
+            div {
+              break-inside: avoid;
+            }
+            @media print {
+              body {
+                padding: 0;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${barcodeElements}
+          <script>
+            // Auto print when everything is loaded
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                setTimeout(() => window.close(), 500);
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+  
+    printWindow.document.close();
+  };
+  
 
   return (
     <Modal
-      title={
-        <div className="flex items-center gap-2 text-gray-800">
-          <QrCode className="w-5 h-5" />
-          <span>Item Barcode</span>
-        </div>
-      }
+      title="Item Barcode"
       open={isOpen}
       onCancel={onClose}
       footer={null}
       width={400}
-      centered
     >
       <div className="p-6 text-center">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-800">{item.name}</h3>
-          <button
-            onClick={handleCopyBarcode}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg
-                     hover:bg-gray-100 transition-colors text-gray-600"
-          >
-            {copied ? (
-              <Check className="w-4 h-4 text-green-600" />
-            ) : (
-              <Copy className="w-4 h-4" />
-            )}
-            {copied ? 'Copied!' : 'Copy Code'}
-          </button>
-        </div>
+        <h3 className="text-lg font-semibold mb-4">{item.name}</h3>
         
-        <div className="flex justify-center items-center bg-gray-50 p-6 rounded-xl border mb-6 min-h-[160px]">
-          <div className="flex justify-center w-full">
-            <svg ref={barcodeRef} className="max-w-full"></svg>
-          </div>
+        <div className="bg-white p-6 rounded-lg border mb-6 justify-items-center">
+          <svg ref={barcodeRef}></svg>
         </div>
 
         <div className="flex items-center justify-center gap-4 mb-6">
@@ -86,16 +137,13 @@ const BarcodeModal: React.FC<BarcodeModalProps> = ({ isOpen, onClose, item }) =>
             max={100}
             value={copies}
             onChange={(value) => setCopies(value || 1)}
-            className="w-24"
+            className="w-20"
           />
         </div>
         
         <button
           onClick={handlePrint}
-          disabled={isGenerating}
-          className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl
-                   hover:bg-blue-700 transition-all duration-200 mx-auto disabled:opacity-50
-                   disabled:cursor-not-allowed shadow-sm hover:shadow"
+          className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mx-auto"
         >
           <Printer className="w-5 h-5" />
           Print {copies > 1 ? `${copies} Barcodes` : 'Barcode'}
